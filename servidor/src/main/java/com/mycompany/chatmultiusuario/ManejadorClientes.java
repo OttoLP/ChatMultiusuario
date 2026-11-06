@@ -3,10 +3,26 @@ package com.mycompany.chatmultiusuario;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class ManejadorClientes implements Runnable {
     // El indice del arreglo tambien determina el color de la camisa.
     private static final ManejadorClientes[] clientes = new ManejadorClientes[4];
+    // El escenario mundo.txt mide 50 x 50 tiles de 48 px.
+    private static final int MAX_POSICION_MUNDO = (50 - 1) * 48;
+    private static final Monstruos monstruos = new Monstruos();
+
+    static {
+        var reloj = Executors.newSingleThreadScheduledExecutor(tarea -> {
+            Thread hilo = new Thread(tarea, "monstruos");
+            hilo.setDaemon(true);
+            return hilo;
+        });
+        reloj.scheduleAtFixedRate(ManejadorClientes::actualizarMonstruos, 0, 50, TimeUnit.MILLISECONDS);
+    }
+
     private final Socket socket;
     private BufferedReader entrada;
     private BufferedWriter salida;
@@ -61,6 +77,9 @@ public class ManejadorClientes implements Runnable {
                 usuario = login.usuario;
                 x = 100 + id * 96;
                 y = 100;
+                while (monstruos.choca(x, y) && x < 900) {
+                    x += 48;
+                }
                 responderLogin(true, "Bienvenido");
                 clientes[id] = this;
                 enviarPosiciones();
@@ -72,12 +91,20 @@ public class ManejadorClientes implements Runnable {
                 if (!"posiciones".equals(mensaje.tipo) || mensaje.x == null || mensaje.y == null) {
                     return; // Cliente fuera del protocolo: cerrar su conexion.
                 }
-                // Solo limites del panel. El movimiento se calcula en el cliente.
-                if (mensaje.x < 0 || mensaje.x > 1200 || mensaje.y < 0 || mensaje.y > 672) {
+                // Solo limites del mundo. El movimiento se calcula en el cliente.
+                if (mensaje.x < 0 || mensaje.x > MAX_POSICION_MUNDO
+                        || mensaje.y < 0 || mensaje.y > MAX_POSICION_MUNDO) {
                     return;
                 }
                 synchronized (clientes) {
                     // Se usa el id de esta conexion, nunca un id enviado por el cliente.
+                    if (monstruos.choca(mensaje.x, mensaje.y)) {
+                        Mensaje correccion = new Mensaje("correccion");
+                        correccion.x = x;
+                        correccion.y = y;
+                        enviar(correccion);
+                        continue;
+                    }
                     x = mensaje.x;
                     y = mensaje.y;
                     enviarPosiciones();
@@ -91,6 +118,7 @@ public class ManejadorClientes implements Runnable {
             synchronized (clientes) {
                 if (id >= 0 && clientes[id] == this) {
                     clientes[id] = null;
+                    if (Arrays.stream(clientes).allMatch(cliente -> cliente == null)) monstruos.reiniciar();
                     enviarPosiciones();
                     System.out.println(usuario + " salio. Lugar disponible.");
                 }
@@ -117,10 +145,27 @@ public class ManejadorClientes implements Runnable {
         salida.flush();
     }
 
-    // Se llama siempre dentro de synchronized(clientes).
+    private static void actualizarMonstruos() {
+        synchronized (clientes) {
+            if (Arrays.stream(clientes).allMatch(cliente -> cliente == null)) return;
+            if (monstruos.update(posicionesJugadores())) enviarPosiciones();
+        }
+    }
+
     private static void enviarPosiciones() {
         Mensaje estado = new Mensaje("posiciones");
-        estado.jugadores = new Mensaje[4];
+        estado.jugadores = posicionesJugadores();
+        estado.monstruos = monstruos.posiciones();
+        for (ManejadorClientes cliente : clientes) {
+            if (cliente != null) {
+                try { cliente.enviar(estado); }
+                catch (IOException e) { cliente.cerrarSocket(); }
+            }
+        }
+    }
+
+    private static Mensaje[] posicionesJugadores() {
+        Mensaje[] jugadores = new Mensaje[clientes.length];
         for (int i = 0; i < clientes.length; i++) {
             ManejadorClientes cliente = clientes[i];
             if (cliente != null) {
@@ -129,15 +174,10 @@ public class ManejadorClientes implements Runnable {
                 jugador.usuario = cliente.usuario;
                 jugador.x = cliente.x;
                 jugador.y = cliente.y;
-                estado.jugadores[i] = jugador;
+                jugadores[i] = jugador;
             }
         }
-        for (ManejadorClientes cliente : clientes) {
-            if (cliente != null) {
-                try { cliente.enviar(estado); }
-                catch (IOException e) { cliente.cerrarSocket(); }
-            }
-        }
+        return jugadores;
     }
     private void cerrarSocket() {
         try { socket.close(); } catch (IOException ignored) {}

@@ -18,7 +18,7 @@ public class ManejadorTiles {
     public ManejadorTiles(GamePanel gp){
         this.gp = gp;
         this.arregloTiles = new Tile[maxTiles];
-        this.mapCodeTile = new int[gp.getMaxRows()][gp.getMaxCols()];
+        this.mapCodeTile = new int[gp.getWorldRows()][gp.getWorldCols()];
         getImagenesTile();
         cargarEscenario();
     }
@@ -58,15 +58,15 @@ public class ManejadorTiles {
     public void cargarEscenario() {
         try (InputStream scenario = getClass().getResourceAsStream("/escenarios/mundo.txt")) {
             if (scenario == null) {
-                System.err.println("No se encontró /escenarios/map.txt");
+                System.err.println("No se encontró /escenarios/mundo.txt");
                 return;
             }
             BufferedReader br = new BufferedReader(new InputStreamReader(scenario));
-            for (int ren = 0; ren < gp.getMaxRows(); ren++) {
+            for (int ren = 0; ren < gp.getWorldRows(); ren++) {
                 String dataRow = br.readLine();
                 if (dataRow == null) break;
-                String[] codes = dataRow.trim().split(" ");
-                for (int col = 0; col < gp.getMaxCols(); col++) {
+                String[] codes = dataRow.trim().split("\\s+");
+                for (int col = 0; col < gp.getWorldCols(); col++) {
                     this.mapCodeTile[ren][col] = Integer.parseInt(codes[col]);
                 }
             }
@@ -75,12 +75,16 @@ public class ManejadorTiles {
         }
     }
 
-    public void draw(Graphics2D g2) {
+    public void draw(Graphics2D g2, int camaraX, int camaraY) {
         int size = gp.getTileSize();
-        for (int ren = 0; ren < gp.getMaxRows(); ren++) {
-            for (int col = 0; col < gp.getMaxCols(); col++) {
-                int tile = this.mapCodeTile[ren][col];
-                g2.drawImage(arregloTiles[tile].getImage(), size * col, size * ren, size, size, null);
+        int ultimaCol = (camaraX + gp.getWidthScreen() - 1) / size;
+        int ultimaRen = (camaraY + gp.getHeightScreen() - 1) / size;
+        for (int ren = camaraY / size; ren <= ultimaRen; ren++) {
+            for (int col = camaraX / size; col <= ultimaCol; col++) {
+                int tile = mapCodeTile[ren][col];
+                int pantallaX = size * col - camaraX;
+                int pantallaY = size * ren - camaraY;
+                g2.drawImage(arregloTiles[tile].getImage(), pantallaX, pantallaY, size, size, null);
             }
         }
     }

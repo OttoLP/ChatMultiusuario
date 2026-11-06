@@ -4,13 +4,15 @@ import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Cliente {
     private final Socket socket;
     private BufferedReader entrada;
     private BufferedWriter salida;
     private volatile boolean conectado;
-    private volatile Mensaje[] jugadores = new Mensaje[4];
+    private volatile Mensaje estado = new Mensaje("posiciones");
+    private final AtomicReference<Mensaje> correccion = new AtomicReference<>();
     private volatile String error = "";
     private int id;
     private int x, y;
@@ -69,9 +71,13 @@ public class Cliente {
             String linea;
             while ((linea = entrada.readLine()) != null) {
                 Mensaje mensaje = ConversorJSON.desdeJson(linea);
+                if ("correccion".equals(mensaje.tipo) && mensaje.x != null && mensaje.y != null) {
+                    correccion.set(mensaje);
+                    continue;
+                }
                 if (!"posiciones".equals(mensaje.tipo) || mensaje.jugadores == null
                         || mensaje.jugadores.length != 4) throw new IOException("Estado invalido");
-                jugadores = mensaje.jugadores;
+                estado = mensaje;
             }
             if (conectado) error = "El servidor cerro la conexion.";
         } catch (IOException | RuntimeException e) {
@@ -99,7 +105,8 @@ public class Cliente {
         if (socket != null) try { socket.close(); } catch (IOException ignored) {}
     }
     public boolean estaConectado() { return conectado; }
-    public Mensaje[] getJugadores() { return jugadores; }
+    public Mensaje getEstado() { return estado; }
+    public Mensaje tomarCorreccion() { return correccion.getAndSet(null); }
     public String getError() { return error; }
     public int getId() { return id; }
     public int getX() { return x; }

@@ -10,6 +10,7 @@ public class Mensaje {
     public Integer id;
     public Integer x, y;
     public Mensaje[] jugadores;
+    public Mensaje[] monstruos;
 
     public Mensaje() {}
     public Mensaje(String tipo) { this.tipo = tipo; }

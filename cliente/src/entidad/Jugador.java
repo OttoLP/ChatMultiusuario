@@ -54,7 +54,7 @@ public class Jugador extends Entidad {
 
     private BufferedImage colorear(BufferedImage imagen) {
 
-        /* 
+        
         Color[] colores = {new Color(237, 28, 36), new Color(40, 110, 235),
                 new Color(35, 180, 70), new Color(245, 205, 35)};
         Color color = colores[id];
@@ -69,7 +69,7 @@ public class Jugador extends Entidad {
                     imagen.setRGB(col, fila, (oscuro ? color.darker() : color).getRGB());
                 }
             }
-        }*/
+        }
         return imagen;
     }
 
@@ -118,8 +118,8 @@ public class Jugador extends Entidad {
             contadorSprites++;
         }
 
-        x = Math.max(0, Math.min(x, gp.getWidthScreen() - gp.getTileSize()));
-        y = Math.max(0, Math.min(y, gp.getHeightScreen() - gp.getTileSize()));
+        x = Math.max(0, Math.min(x, gp.getWidthWorld() - gp.getTileSize()));
+        y = Math.max(0, Math.min(y, gp.getHeightWorld() - gp.getTileSize()));
 
         if (contadorSprites > cambiaSprite) {
             numeroSprites = (numeroSprites == 1) ? 2 : 1;
@@ -127,7 +127,7 @@ public class Jugador extends Entidad {
         }
     }
 
-    public void draw(Graphics2D g2){
+    public void draw(Graphics2D g2, int camaraX, int camaraY){
         BufferedImage sprite = null;
         switch (this.getDireccion()) {
             case "arriba":
@@ -155,7 +155,9 @@ public class Jugador extends Entidad {
                     sprite = this.derecha2;
             break;
         }
-        g2.drawImage(sprite, this.getX(), this.getY(), gp.getTileSize(), gp.getTileSize(), null);
+        int pantallaX = getX() - camaraX;
+        int pantallaY = getY() - camaraY;
+        g2.drawImage(sprite, pantallaX, pantallaY, gp.getTileSize(), gp.getTileSize(), null);
         
         /* 
         g2.setColor(Color.BLACK);
