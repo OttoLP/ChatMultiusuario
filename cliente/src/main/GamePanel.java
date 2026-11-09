@@ -85,14 +85,22 @@ public class GamePanel extends JPanel implements Runnable {
                 } else {
                     jugadores[i].recibirPosicion(estado[i].x, estado[i].y);
                 }
+                if (estado[i].vida != null && estado[i].vidaMax != null) {
+                    jugadores[i].setVida(estado[i].vida, estado[i].vidaMax);
+                }
             }
         }
         Jugador local = jugadores[cliente.getId()];
+        Mensaje yo = estado[cliente.getId()];
+        if (yo != null && yo.vida != null && yo.vidaMax != null) {
+            local.setVida(yo.vida, yo.vidaMax);
+        }
         Mensaje correccion = cliente.tomarCorreccion();
         if (correccion != null) {
             local.setX(correccion.x);
             local.setY(correccion.y);
         }
+        if (local.isMuerto()) return; // un jugador caido ya no se mueve
         int antesX = local.getX(), antesY = local.getY();
         local.update();
         if (monstruo.choca(local.getX(), local.getY(), monstruos)) {
@@ -115,9 +123,11 @@ public class GamePanel extends JPanel implements Runnable {
                 getHeightWorld() - heightScreen));
         mTi.draw(g2, camaraX, camaraY);
         monstruo.draw(g2, monstruos, camaraX, camaraY, tileSize);
+        dibujaDisparos(g2, camaraX, camaraY);
         for (Jugador jugador : jugadores) {
             if (jugador != null) jugador.draw(g2, camaraX, camaraY);
         }
+        dibujaInterfaz(g2, local);
         if (!cliente.estaConectado()) {
             g2.setColor(new Color(0, 0, 0, 190));
             g2.fillRect(0, 0, widthScreen, 50);
@@ -125,6 +135,51 @@ public class GamePanel extends JPanel implements Runnable {
             g2.drawString(cliente.getError() + " Cierra y vuelve a abrir el cliente.", 20, 30);
         }
         g2.dispose();
+    }
+
+    // Linea breve desde el jugador que ataca hasta su objetivo.
+    private void dibujaDisparos(Graphics2D g2, int camaraX, int camaraY) {
+        int mitad = tileSize / 2;
+        g2.setColor(new Color(255, 245, 200, 220));
+        g2.setStroke(new BasicStroke(3));
+        for (Cliente.Disparo disparo : cliente.getDisparos()) {
+            if (disparo.jugador() < 0 || disparo.jugador() >= jugadores.length) continue;
+            Jugador origen = jugadores[disparo.jugador()];
+            if (origen == null) continue;
+            g2.drawLine(origen.getX() + mitad - camaraX, origen.getY() + mitad - camaraY,
+                    disparo.x() + mitad - camaraX, disparo.y() + mitad - camaraY);
+        }
+        g2.setStroke(new BasicStroke(1));
+    }
+
+    // Barra de vida del jugador local y avisos de caida o fin de partida.
+    private void dibujaInterfaz(Graphics2D g2, Jugador local) {
+        int ancho = 220, alto = 22, margen = 16;
+        int vida = Math.max(0, local.getVida());
+        g2.setColor(new Color(20, 20, 20, 200));
+        g2.fillRect(margen - 2, margen - 2, ancho + 4, alto + 4);
+        g2.setColor(new Color(190, 40, 40));
+        g2.fillRect(margen, margen, ancho * vida / Math.max(1, local.getVidaMax()), alto);
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("SansSerif", Font.BOLD, 14));
+        g2.drawString("VIDA  " + vida + " / " + local.getVidaMax(), margen + 8, margen + 16);
+        if (Boolean.TRUE.equals(cliente.getEstado().fin)) {
+            mensajeCentral(g2, "FIN DEL JUEGO", "Todos cayeron. Reiniciando...");
+        } else if (local.isMuerto()) {
+            mensajeCentral(g2, "HAS CAIDO", "La partida se reinicia cuando todos caigan.");
+        }
+    }
+
+    private void mensajeCentral(Graphics2D g2, String titulo, String detalle) {
+        g2.setColor(new Color(0, 0, 0, 130));
+        g2.fillRect(0, 0, widthScreen, heightScreen);
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("SansSerif", Font.BOLD, 48));
+        FontMetrics grande = g2.getFontMetrics();
+        g2.drawString(titulo, (widthScreen - grande.stringWidth(titulo)) / 2, heightScreen / 2);
+        g2.setFont(new Font("SansSerif", Font.PLAIN, 20));
+        FontMetrics chico = g2.getFontMetrics();
+        g2.drawString(detalle, (widthScreen - chico.stringWidth(detalle)) / 2, heightScreen / 2 + 40);
     }
 
     // Getters

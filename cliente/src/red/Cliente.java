@@ -3,7 +3,10 @@ package red;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class Cliente {
@@ -13,6 +16,10 @@ public class Cliente {
     private volatile boolean conectado;
     private volatile Mensaje estado = new Mensaje("posiciones");
     private final AtomicReference<Mensaje> correccion = new AtomicReference<>();
+    // Ataques recientes para dibujarlos unos instantes (jugador que ataca y objetivo).
+    public record Disparo(int jugador, int x, int y, long hasta) {}
+    private static final long DURACION_DISPARO_MS = 150;
+    private final ConcurrentLinkedQueue<Disparo> disparos = new ConcurrentLinkedQueue<>();
     private volatile String error = "";
     private int id;
     private int x, y;
@@ -78,6 +85,14 @@ public class Cliente {
                 if (!"posiciones".equals(mensaje.tipo) || mensaje.jugadores == null
                         || mensaje.jugadores.length != 4) throw new IOException("Estado invalido");
                 estado = mensaje;
+                if (mensaje.disparos != null) {
+                    long hasta = System.currentTimeMillis() + DURACION_DISPARO_MS;
+                    for (Mensaje d : mensaje.disparos) {
+                        if (d.id != null && d.x != null && d.y != null) {
+                            disparos.add(new Disparo(d.id, d.x, d.y, hasta));
+                        }
+                    }
+                }
             }
             if (conectado) error = "El servidor cerro la conexion.";
         } catch (IOException | RuntimeException e) {
@@ -107,6 +122,12 @@ public class Cliente {
     public boolean estaConectado() { return conectado; }
     public Mensaje getEstado() { return estado; }
     public Mensaje tomarCorreccion() { return correccion.getAndSet(null); }
+    // Ataques que todavia deben verse en pantalla.
+    public List<Disparo> getDisparos() {
+        long ahora = System.currentTimeMillis();
+        disparos.removeIf(d -> d.hasta() < ahora);
+        return new ArrayList<>(disparos);
+    }
     public String getError() { return error; }
     public int getId() { return id; }
     public int getX() { return x; }

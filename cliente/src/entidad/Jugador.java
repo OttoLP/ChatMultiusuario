@@ -1,6 +1,8 @@
 package entidad;
 
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Composite;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -17,6 +19,8 @@ public class Jugador extends Entidad {
     private int id;
     private String usuario;
     private final int xPantalla, yPantalla;
+    // La vida la decide el servidor; aqui solo se guarda para dibujarla.
+    private int vida = 100, vidaMax = 100;
 
     public Jugador(GamePanel gp, KeyManager2 mT, int id, String usuario){
         this.gp = gp;
@@ -157,7 +161,12 @@ public class Jugador extends Entidad {
         }
         int pantallaX = getX() - camaraX;
         int pantallaY = getY() - camaraY;
+        // Un jugador caido se ve casi transparente y sin barra de vida.
+        Composite normal = g2.getComposite();
+        if (isMuerto()) g2.setComposite(AlphaComposite.SrcOver.derive(0.3f));
         g2.drawImage(sprite, pantallaX, pantallaY, gp.getTileSize(), gp.getTileSize(), null);
+        g2.setComposite(normal);
+        if (!isMuerto()) dibujaBarraVida(g2, pantallaX, pantallaY);
         
         /* 
         g2.setColor(Color.BLACK);
@@ -167,7 +176,21 @@ public class Jugador extends Entidad {
         */
     }
 
+    private void dibujaBarraVida(Graphics2D g2, int pantallaX, int pantallaY) {
+        int ancho = 40, alto = 5;
+        int barraX = pantallaX + (gp.getTileSize() - ancho) / 2;
+        int barraY = pantallaY - 8;
+        g2.setColor(new Color(20, 20, 20, 200));
+        g2.fillRect(barraX - 1, barraY - 1, ancho + 2, alto + 2);
+        g2.setColor(new Color(190, 40, 40));
+        g2.fillRect(barraX, barraY, ancho * vida / Math.max(1, vidaMax), alto);
+    }
+
     // Setters
+    public void setVida(int vida, int vidaMax) {
+        this.vida = vida;
+        this.vidaMax = vidaMax;
+    }
     public void setX(int valor){
         this.x = valor;
     }
@@ -179,6 +202,9 @@ public class Jugador extends Entidad {
     }
     public int getY(){ return this.y; }
     public String getUsuario() { return usuario; }
+    public int getVida() { return vida; }
+    public int getVidaMax() { return vidaMax; }
+    public boolean isMuerto() { return vida <= 0; }
     public int getVelocidad(){
         return this.velocidad;
     }
