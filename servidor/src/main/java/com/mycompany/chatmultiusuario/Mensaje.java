@@ -1,6 +1,7 @@
 package com.mycompany.chatmultiusuario;
 
-// Solo dos tipos: autenticar y posiciones. Los null no se escriben en JSON.
+// Tipos: autenticar, posiciones (cliente -> servidor y estado del juego) y correccion.
+// Los null no se escriben en JSON.
 public class Mensaje {
     public String tipo;
     public String usuario;
@@ -11,6 +12,11 @@ public class Mensaje {
     public Integer x, y;
     public Mensaje[] jugadores;
     public Mensaje[] monstruos;
+    // Combate: vida actual y maxima (jugadores y monstruos), fin de partida
+    // y ataques ocurridos en este mensaje (id = quien ataca, x/y = objetivo).
+    public Integer vida, vidaMax;
+    public Boolean fin;
+    public Mensaje[] disparos;
 
     public Mensaje() {}
     public Mensaje(String tipo) { this.tipo = tipo; }
