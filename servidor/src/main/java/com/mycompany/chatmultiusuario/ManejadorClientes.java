@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 public class ManejadorClientes implements Runnable {
@@ -15,6 +16,7 @@ public class ManejadorClientes implements Runnable {
     // El escenario mundo.txt mide 50 x 50 tiles de 48 px.
     private static final int MAX_POSICION_MUNDO = (50 - 1) * 48;
     private static final Monstruos monstruos = new Monstruos();
+    private static final Oleadas oleadas = new Oleadas();
     // Todos los jugadores cayeron: se espera Combate.REINICIO_MS y se reinicia.
     private static boolean finPartida;
     private static long reinicioEn;
@@ -38,6 +40,8 @@ public class ManejadorClientes implements Runnable {
     private int vida = Combate.VIDA_JUGADOR;
     private long invulnerableHasta;
     private long proximoAtaque;
+    private final Mejoras mejoras = new Mejoras();
+    private String aviso; // mejora recibida al superar la oleada (solo durante el descanso)
 
     public ManejadorClientes(Socket socket) { this.socket = socket; }
 
@@ -128,6 +132,7 @@ public class ManejadorClientes implements Runnable {
                     clientes[id] = null;
                     if (Arrays.stream(clientes).allMatch(cliente -> cliente == null)) {
                         monstruos.reiniciar();
+                        oleadas.reiniciar();
                         finPartida = false;
                     }
                     enviarPosiciones();
@@ -196,7 +201,7 @@ public class ManejadorClientes implements Runnable {
         disparo.x = monstruos.posicion(objetivo).x;
         disparo.y = monstruos.posicion(objetivo).y;
         disparos.add(disparo);
-        monstruos.danar(objetivo, Combate.DANIO_ATAQUE, ahora);
+        monstruos.danar(objetivo, mejoras.danioAtaque());
         return true;
     }
 
@@ -209,7 +214,7 @@ public class ManejadorClientes implements Runnable {
                 if (ahora >= reinicioEn) reiniciarPartida();
                 return;
             }
-            boolean cambio = monstruos.update(posicionesVivos(), ahora);
+            boolean cambio = monstruos.update(posicionesVivos());
             List<Mensaje> disparos = new ArrayList<>();
             boolean alguienVivo = false;
             for (ManejadorClientes jugador : clientes) {
@@ -224,9 +229,60 @@ public class ManejadorClientes implements Runnable {
                 finPartida = true;
                 reinicioEn = ahora + Combate.REINICIO_MS;
                 cambio = true;
-                System.out.println("Todos cayeron. Reinicio en " + (Combate.REINICIO_MS / 1000) + " s.");
+                System.out.println("Todos cayeron en la oleada " + oleadas.numero()
+                        + ". Reinicio en " + (Combate.REINICIO_MS / 1000) + " s.");
+            } else {
+                // El director va al final: asi cuenta los enemigos que murieron en este ciclo.
+                switch (oleadas.update(ahora, conectados(), monstruos, posicionesVivos())) {
+                    case INICIADA -> {
+                        System.out.println("Oleada " + oleadas.numero() + ": "
+                                + oleadas.restantes(monstruos) + " enemigos.");
+                        limpiarAvisos();
+                        cambio = true;
+                    }
+                    case SUPERADA -> {
+                        superarOleada();
+                        cambio = true;
+                    }
+                    case CAMBIO -> cambio = true;
+                    case SIN_CAMBIO -> { }
+                }
             }
             if (cambio) enviarPosiciones(disparos);
+        }
+    }
+
+    private static int conectados() {
+        int total = 0;
+        for (ManejadorClientes cliente : clientes) {
+            if (cliente != null) total++;
+        }
+        return total;
+    }
+
+    // Fin de oleada: los caidos reviven con parte de su vida y los demas recuperan un poco.
+    private static void superarOleada() {
+        System.out.println("Oleada " + oleadas.numero() + " superada.");
+        int max = Combate.VIDA_JUGADOR;
+        for (ManejadorClientes cliente : clientes) {
+            if (cliente == null) continue;
+            boolean cayo = cliente.vida <= 0;
+            String perdida = null;
+            if (cayo) {
+                perdida = cliente.mejoras.penalizar(); // pierde la ultima mejora que habia ganado
+                cliente.vida = Math.max(1, max * Combate.REVIVIR_PORCENTAJE / 100);
+            } else {
+                cliente.vida = Math.min(max, cliente.vida + max * Combate.CURACION_PORCENTAJE / 100);
+            }
+            String ganada = cliente.mejoras.subir(ThreadLocalRandom.current());
+            cliente.aviso = ganada + (!cayo ? "" : perdida == null
+                    ? "   |   Reviviste" : "   |   Caiste: " + perdida);
+        }
+    }
+
+    private static void limpiarAvisos() {
+        for (ManejadorClientes cliente : clientes) {
+            if (cliente != null) cliente.aviso = null;
         }
     }
 
@@ -234,12 +290,15 @@ public class ManejadorClientes implements Runnable {
     private static void reiniciarPartida() {
         finPartida = false;
         monstruos.reiniciar();
+        oleadas.reiniciar();
         long ahora = System.currentTimeMillis();
         for (ManejadorClientes cliente : clientes) {
             if (cliente == null) continue;
             cliente.vida = Combate.VIDA_JUGADOR;
             cliente.invulnerableHasta = ahora + Combate.PROTECCION_ENTRADA_MS;
             cliente.proximoAtaque = 0;
+            cliente.mejoras.reiniciar();
+            cliente.aviso = null;
             cliente.colocarEnInicio();
             cliente.enviarPosicionActual();
         }
@@ -257,6 +316,9 @@ public class ManejadorClientes implements Runnable {
         estado.jugadores = posicionesJugadores();
         estado.monstruos = monstruos.posiciones();
         if (finPartida) estado.fin = true;
+        estado.oleada = oleadas.numero();
+        if (oleadas.enCurso()) estado.restantes = oleadas.restantes(monstruos);
+        else estado.descanso = oleadas.segundosDescanso(System.currentTimeMillis());
         if (!disparos.isEmpty()) estado.disparos = disparos.toArray(new Mensaje[0]);
         for (ManejadorClientes cliente : clientes) {
             if (cliente != null) {
@@ -278,6 +340,10 @@ public class ManejadorClientes implements Runnable {
                 jugador.y = cliente.y;
                 jugador.vida = cliente.vida;
                 jugador.vidaMax = Combate.VIDA_JUGADOR;
+                jugador.nivelDanio = cliente.mejoras.nivelDanio();
+                jugador.nivelVelocidad = cliente.mejoras.nivelVelocidad();
+                jugador.velocidad = cliente.mejoras.velocidad();
+                jugador.contenido = cliente.aviso;
                 jugadores[i] = jugador;
             }
         }

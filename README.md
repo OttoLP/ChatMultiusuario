@@ -119,7 +119,8 @@ Cada integrante crea los suyos, así nadie pisa la configuración de otro.
 
 - Las contraseñas están en texto plano en la base de datos y los sockets no usan TLS.
 - El servidor confía en el movimiento que calcula el cliente; solo valida los límites del mundo. La vida, el daño y los monstruos sí los decide el servidor.
-- Los monstruos persiguen en línea recta y se atoran con árboles y muros; todavía no hay oleadas, experiencia ni mejoras. Sin reconexión automática.
+- Los monstruos persiguen en línea recta y se atoran con árboles y muros, y todos son del mismo tipo. Sin reconexión automática.
+- Quien entra a la mitad de una partida empieza sin mejoras, aunque los demás ya tengan varias.
 - No hay chat de texto en esta versión.
 
 Son buenos candidatos para las siguientes entregas: abre un Issue por cada uno.
