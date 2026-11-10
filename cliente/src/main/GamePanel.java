@@ -95,6 +95,9 @@ public class GamePanel extends JPanel implements Runnable {
         if (yo != null && yo.vida != null && yo.vidaMax != null) {
             local.setVida(yo.vida, yo.vidaMax);
         }
+        if (yo != null && yo.nivelDanio != null && yo.nivelVelocidad != null && yo.velocidad != null) {
+            local.setMejoras(yo.nivelDanio, yo.nivelVelocidad, yo.velocidad);
+        }
         Mensaje correccion = cliente.tomarCorreccion();
         if (correccion != null) {
             local.setX(correccion.x);
@@ -163,11 +166,58 @@ public class GamePanel extends JPanel implements Runnable {
         g2.setColor(Color.WHITE);
         g2.setFont(new Font("SansSerif", Font.BOLD, 14));
         g2.drawString("VIDA  " + vida + " / " + local.getVidaMax(), margen + 8, margen + 16);
-        if (Boolean.TRUE.equals(cliente.getEstado().fin)) {
-            mensajeCentral(g2, "FIN DEL JUEGO", "Todos cayeron. Reiniciando...");
+        // Niveles de mejora, debajo de la barra de vida (\u00D1 = la letra enie).
+        g2.drawString("DA\u00D1O  " + local.getNivelDanio() + "     VELOCIDAD  " + local.getNivelVelocidad(),
+                margen, margen + alto + 22);
+        Mensaje estado = cliente.getEstado();
+        dibujaOleada(g2, estado);
+        Mensaje[] jugadoresEstado = estado.jugadores;
+        Mensaje yo = jugadoresEstado == null ? null : jugadoresEstado[cliente.getId()];
+        if (estado.descanso != null && yo != null && yo.contenido != null
+                && !Boolean.TRUE.equals(estado.fin) && !local.isMuerto()) {
+            dibujaAviso(g2, yo.contenido);
+        }
+        if (Boolean.TRUE.equals(estado.fin)) {
+            int oleada = estado.oleada == null ? 0 : estado.oleada;
+            mensajeCentral(g2, "FIN DEL JUEGO", oleada > 0
+                    ? "Llegaron a la oleada " + oleada + ". Reiniciando..."
+                    : "Todos cayeron. Reiniciando...");
         } else if (local.isMuerto()) {
             mensajeCentral(g2, "HAS CAIDO", "La partida se reinicia cuando todos caigan.");
         }
+    }
+
+    // Numero de oleada y enemigos que faltan, o cuenta regresiva del descanso (arriba al centro).
+    private void dibujaOleada(Graphics2D g2, Mensaje estado) {
+        int oleada = estado.oleada == null ? 0 : estado.oleada;
+        String texto;
+        if (estado.descanso != null) {
+            texto = oleada == 0
+                    ? "Preparense: la oleada 1 empieza en " + estado.descanso + " s"
+                    : "Oleada " + oleada + " superada. La siguiente empieza en " + estado.descanso + " s";
+        } else if (estado.restantes != null) {
+            texto = "OLEADA " + oleada + "   -   quedan " + estado.restantes;
+        } else {
+            return;
+        }
+        g2.setFont(new Font("SansSerif", Font.BOLD, 18));
+        int ancho = g2.getFontMetrics().stringWidth(texto) + 24;
+        int x = (widthScreen - ancho) / 2;
+        g2.setColor(new Color(20, 20, 20, 200));
+        g2.fillRect(x, 12, ancho, 30);
+        g2.setColor(Color.WHITE);
+        g2.drawString(texto, x + 12, 33);
+    }
+
+    // Mejora recibida al superar la oleada (solo durante el descanso).
+    private void dibujaAviso(Graphics2D g2, String aviso) {
+        g2.setFont(new Font("SansSerif", Font.BOLD, 26));
+        int ancho = g2.getFontMetrics().stringWidth(aviso) + 40;
+        int x = (widthScreen - ancho) / 2;
+        g2.setColor(new Color(20, 20, 20, 210));
+        g2.fillRect(x, 60, ancho, 44);
+        g2.setColor(new Color(255, 245, 200));
+        g2.drawString(aviso, x + 20, 90);
     }
 
     private void mensajeCentral(Graphics2D g2, String titulo, String detalle) {

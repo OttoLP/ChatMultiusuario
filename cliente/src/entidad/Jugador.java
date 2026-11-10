@@ -21,6 +21,9 @@ public class Jugador extends Entidad {
     private final int xPantalla, yPantalla;
     // La vida la decide el servidor; aqui solo se guarda para dibujarla.
     private int vida = 100, vidaMax = 100;
+    // Mejoras que decide el servidor. La velocidad tiene decimales y se reparte en pasos enteros.
+    private int nivelDanio, nivelVelocidad;
+    private double velocidadReal = 4, restoVelocidad;
 
     public Jugador(GamePanel gp, KeyManager2 mT, int id, String usuario){
         this.gp = gp;
@@ -108,6 +111,10 @@ public class Jugador extends Entidad {
         }
 
         if (moviendo) {
+            // Con decimales (por ejemplo 4.3) se avanzan 4 px casi todos los cuadros y 5 de vez en cuando.
+            restoVelocidad += velocidadReal;
+            this.velocidad = (int) restoVelocidad;
+            restoVelocidad -= this.velocidad;
             this.colisionActivada = false;
             gp.getDetectorColisiones().revisaTile(this);
 
@@ -191,6 +198,11 @@ public class Jugador extends Entidad {
         this.vida = vida;
         this.vidaMax = vidaMax;
     }
+    public void setMejoras(int nivelDanio, int nivelVelocidad, double velocidad) {
+        this.nivelDanio = nivelDanio;
+        this.nivelVelocidad = nivelVelocidad;
+        this.velocidadReal = velocidad;
+    }
     public void setX(int valor){
         this.x = valor;
     }
@@ -204,6 +216,8 @@ public class Jugador extends Entidad {
     public String getUsuario() { return usuario; }
     public int getVida() { return vida; }
     public int getVidaMax() { return vidaMax; }
+    public int getNivelDanio() { return nivelDanio; }
+    public int getNivelVelocidad() { return nivelVelocidad; }
     public boolean isMuerto() { return vida <= 0; }
     public int getVelocidad(){
         return this.velocidad;

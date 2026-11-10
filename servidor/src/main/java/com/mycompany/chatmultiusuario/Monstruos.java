@@ -14,9 +14,21 @@ final class Monstruos {
     private static final int CONTACTO = 8;   // margen alrededor del jugador para contar un golpe
     private static final int PASO = 5;
     private final int[][] mapa = new int[50][50];
-    private final Rectangle[] grupo = new Rectangle[20];
-    private final int[] vida = new int[grupo.length];        // 0 = muerto
-    private final long[] reaparece = new long[grupo.length]; // cuando vuelve un monstruo muerto
+
+    private static final class Enemigo {
+        final Rectangle cuerpo;
+        final int vidaMax;
+        int vida;
+
+        Enemigo(Rectangle cuerpo, int vida) {
+            this.cuerpo = cuerpo;
+            this.vida = vida;
+            this.vidaMax = vida;
+        }
+    }
+
+    // Solo hay enemigos vivos: al morir se quitan de la lista.
+    private final List<Enemigo> enemigos = new ArrayList<>();
 
     Monstruos() {
         InputStream recurso = getClass().getResourceAsStream("/escenarios/mundo.txt");
@@ -26,26 +38,21 @@ final class Monstruos {
                 for (int col = 0; col < fila.length; col++) fila[col] = lector.nextInt();
             }
         }
-        reiniciar();
     }
 
     void reiniciar() {
-        for (int i = 0; i < grupo.length; i++) {
-            grupo[i] = cuerpo((10 + i * 2) * TILE, 2 * TILE);
-            vida[i] = Combate.VIDA_MONSTRUO;
-            reaparece[i] = 0;
-        }
+        enemigos.clear();
+    }
+
+    int vivos() {
+        return enemigos.size();
     }
 
     // jugadores: solo los que estan vivos (los caidos no atraen ni estorban).
-    boolean update(Mensaje[] jugadores, long ahora) {
+    boolean update(Mensaje[] jugadores) {
         boolean cambio = false;
-        for (int i = 0; i < grupo.length; i++) {
-            if (vida[i] <= 0 && ahora >= reaparece[i]) cambio |= reaparecer(i, jugadores, ahora);
-        }
-        for (int i = 0; i < grupo.length; i++) {
-            if (vida[i] <= 0) continue;
-            Rectangle monstruo = grupo[i];
+        for (Enemigo enemigo : enemigos) {
+            Rectangle monstruo = enemigo.cuerpo;
             Mensaje objetivo = null;
             int menorDistancia = Integer.MAX_VALUE;
             for (Mensaje jugador : jugadores) {
@@ -61,15 +68,15 @@ final class Monstruos {
             if (objetivo == null) continue;
             int dx = Math.max(-PASO, Math.min(PASO, objetivo.x - monstruo.x));
             int dy = Math.max(-PASO, Math.min(PASO, objetivo.y - monstruo.y));
-            cambio |= mover(i, dx, 0, jugadores);
-            cambio |= mover(i, 0, dy, jugadores);
+            cambio |= mover(enemigo, dx, 0, jugadores);
+            cambio |= mover(enemigo, 0, dy, jugadores);
         }
         return cambio;
     }
 
-    private boolean mover(int i, int dx, int dy, Mensaje[] jugadores) {
+    private boolean mover(Enemigo enemigo, int dx, int dy, Mensaje[] jugadores) {
         if (dx == 0 && dy == 0) return false;
-        Rectangle monstruo = grupo[i];
+        Rectangle monstruo = enemigo.cuerpo;
         Rectangle siguiente = cuerpo(monstruo.x + dx, monstruo.y + dy);
         for (int fila = siguiente.y / TILE; fila <= (siguiente.y + CUERPO - 1) / TILE; fila++) {
             for (int col = siguiente.x / TILE; col <= (siguiente.x + CUERPO - 1) / TILE; col++) {
@@ -79,28 +86,26 @@ final class Monstruos {
         for (Mensaje jugador : jugadores) {
             if (jugador != null && siguiente.intersects(cuerpo(jugador.x, jugador.y))) return false;
         }
-        for (int j = 0; j < grupo.length; j++) {
-            if (j != i && vida[j] > 0 && siguiente.intersects(grupo[j])) return false;
+        for (Enemigo otro : enemigos) {
+            if (otro != enemigo && siguiente.intersects(otro.cuerpo)) return false;
         }
         monstruo.setLocation(siguiente.x, siguiente.y);
         return true;
     }
 
-    // Un monstruo muerto vuelve en un lugar libre, lejos de los jugadores vivos.
-    // Si no encuentra uno, lo intenta de nuevo en 1 segundo.
-    private boolean reaparecer(int i, Mensaje[] jugadores, long ahora) {
+    // Hace aparecer un enemigo en un lugar libre, lejos de los jugadores vivos.
+    // Devuelve false si no encontro lugar (se intentara de nuevo en el siguiente ciclo).
+    boolean aparecer(int vida, Mensaje[] jugadores) {
         ThreadLocalRandom azar = ThreadLocalRandom.current();
         for (int intento = 0; intento < 40; intento++) {
             int col = azar.nextInt(mapa[0].length);
             int fila = azar.nextInt(mapa.length);
             if (bloquea(mapa[fila][col])) continue;
             Rectangle candidato = cuerpo(col * TILE, fila * TILE);
-            if (!lejosDeJugadores(candidato, jugadores) || chocaConMonstruo(candidato, i)) continue;
-            grupo[i] = candidato;
-            vida[i] = Combate.VIDA_MONSTRUO;
+            if (!lejosDeJugadores(candidato, jugadores) || chocaConEnemigo(candidato)) continue;
+            enemigos.add(new Enemigo(candidato, vida));
             return true;
         }
-        reaparece[i] = ahora + 1000;
         return false;
     }
 
@@ -112,9 +117,9 @@ final class Monstruos {
         return true;
     }
 
-    private boolean chocaConMonstruo(Rectangle punto, int excepto) {
-        for (int j = 0; j < grupo.length; j++) {
-            if (j != excepto && vida[j] > 0 && punto.intersects(grupo[j])) return true;
+    private boolean chocaConEnemigo(Rectangle punto) {
+        for (Enemigo enemigo : enemigos) {
+            if (punto.intersects(enemigo.cuerpo)) return true;
         }
         return false;
     }
@@ -124,35 +129,28 @@ final class Monstruos {
         return tile == 1 || tile == 3;
     }
 
-    // Un monstruo vivo ocupa el lugar del jugador (se usa para no dejarlo entrar en el).
+    // Un monstruo ocupa el lugar del jugador (se usa para no dejarlo entrar en el).
     boolean choca(int x, int y) {
-        Rectangle jugador = cuerpo(x, y);
-        for (int i = 0; i < grupo.length; i++) {
-            if (vida[i] > 0 && grupo[i].intersects(jugador)) return true;
-        }
-        return false;
+        return chocaConEnemigo(cuerpo(x, y));
     }
 
-    // Un monstruo vivo esta tocando al jugador: cuenta como golpe.
+    // Un monstruo esta tocando al jugador: cuenta como golpe.
     boolean toca(int x, int y) {
         Rectangle jugador = cuerpo(x, y);
         jugador.grow(CONTACTO, CONTACTO);
-        for (int i = 0; i < grupo.length; i++) {
-            if (vida[i] > 0 && grupo[i].intersects(jugador)) return true;
-        }
-        return false;
+        return chocaConEnemigo(jugador);
     }
 
-    // Indice del monstruo vivo mas cercano dentro del alcance, o -1.
+    // Indice del monstruo mas cercano dentro del alcance, o -1.
     int masCercano(int x, int y, int alcance) {
         int mejor = -1;
         long menor = (long) alcance * alcance;
         int cx = x + CUERPO / 2;
         int cy = y + CUERPO / 2;
-        for (int i = 0; i < grupo.length; i++) {
-            if (vida[i] <= 0) continue;
-            long dx = grupo[i].x + CUERPO / 2 - cx;
-            long dy = grupo[i].y + CUERPO / 2 - cy;
+        for (int i = 0; i < enemigos.size(); i++) {
+            Rectangle cuerpo = enemigos.get(i).cuerpo;
+            long dx = cuerpo.x + CUERPO / 2 - cx;
+            long dy = cuerpo.y + CUERPO / 2 - cy;
             long distancia = dx * dx + dy * dy;
             if (distancia <= menor) {
                 menor = distancia;
@@ -162,32 +160,32 @@ final class Monstruos {
         return mejor;
     }
 
+    // Los indices solo valen hasta el siguiente danar(): usalos de inmediato.
     Rectangle posicion(int i) {
-        return grupo[i];
+        return enemigos.get(i).cuerpo;
     }
 
-    // Resta vida. Devuelve true si el monstruo murio.
-    boolean danar(int i, int cantidad, long ahora) {
-        vida[i] -= cantidad;
-        if (vida[i] > 0) return false;
-        vida[i] = 0;
-        reaparece[i] = ahora + Combate.REAPARICION_MS;
+    // Resta vida. Devuelve true si el monstruo murio (y lo quita de la lista).
+    boolean danar(int i, int cantidad) {
+        Enemigo enemigo = enemigos.get(i);
+        enemigo.vida -= cantidad;
+        if (enemigo.vida > 0) return false;
+        enemigos.remove(i);
         return true;
     }
 
-    // Solo los monstruos vivos viajan al cliente.
     Mensaje[] posiciones() {
-        List<Mensaje> vivos = new ArrayList<>();
-        for (int i = 0; i < grupo.length; i++) {
-            if (vida[i] <= 0) continue;
+        Mensaje[] posiciones = new Mensaje[enemigos.size()];
+        for (int i = 0; i < posiciones.length; i++) {
+            Enemigo enemigo = enemigos.get(i);
             Mensaje posicion = new Mensaje();
-            posicion.x = grupo[i].x;
-            posicion.y = grupo[i].y;
-            posicion.vida = vida[i];
-            posicion.vidaMax = Combate.VIDA_MONSTRUO;
-            vivos.add(posicion);
+            posicion.x = enemigo.cuerpo.x;
+            posicion.y = enemigo.cuerpo.y;
+            posicion.vida = enemigo.vida;
+            posicion.vidaMax = enemigo.vidaMax;
+            posiciones[i] = posicion;
         }
-        return vivos.toArray(new Mensaje[0]);
+        return posiciones;
     }
 
     private static Rectangle cuerpo(int x, int y) {
